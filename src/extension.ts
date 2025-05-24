@@ -32,12 +32,10 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const model = "codellama:7b-instruct";
-        const prompt =
-          `Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`.trim();
+        const prompt = `Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`.trim();
 
-        vscode.window.showInformationMessage(
-          "📦 Running Generate Commit Message"
-        );
+        vscode.window.showInformationMessage("📦 Running Generate Commit Message");
+
         const res = await fetch("http://localhost:11434/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -48,40 +46,32 @@ export function activate(context: vscode.ExtensionContext) {
             stream: false,
           }),
         });
+
         if (!res.ok) {
           console.error("Error:", res.statusText);
-          vscode.window.showErrorMessage(
-            `💥 Error: ${res.status || "Unknown error"}`
-          );
-          // create a log.txt file in the workspace root with the error message
+          vscode.window.showErrorMessage(`💥 Error: ${res.status || "Unknown error"}`);
+
           const logFilePath = `${cwd}/log.txt`;
           const logFileUri = vscode.Uri.file(logFilePath);
           const logFileContent = `Error: ${res.statusText || "Unknown error"}`;
-          await vscode.workspace.fs.writeFile(
-            logFileUri,
-            Buffer.from(logFileContent, "utf-8")
-          );
-          vscode.window.showInformationMessage(
-            `⚠️ Error logged to ${logFilePath}`
-          );
+          await vscode.workspace.fs.writeFile(logFileUri, Buffer.from(logFileContent, "utf-8"));
+          vscode.window.showInformationMessage(`⚠️ Error logged to ${logFilePath}`);
           throw new Error(`Error: ${res.statusText || "Unknown error"}`);
         }
+
         const raw = await res.json();
         console.log("Raw response:", raw);
-        const inner = JSON.parse(raw.response); // unwrap "response" string
+        const inner = JSON.parse(raw.response);
         console.log("Parsed response:", inner);
         const parsedData = CommitResponseSchema.safeParse(inner);
 
-        vscode.window.showInformationMessage(
-          `JSON Response: ${JSON.stringify(inner, null, 2)}`
-        );
+        vscode.window.showInformationMessage(`JSON Response: ${JSON.stringify(inner, null, 2)}`);
+
         if (parsedData.success) {
-          vscode.window.showInformationMessage(
-            `✅ Commit message generated successfully!`,
-            {
-              detail: `Commit message: ${parsedData.data.commit_message}`,
-            }
-          );
+          vscode.window.showInformationMessage(`✅ Commit message generated successfully!`, {
+            detail: `Commit message: ${parsedData.data.commit_message}`,
+          });
+
           const commitMessage = parsedData.data.commit_message;
           console.log("Commit message:", commitMessage);
 
@@ -95,10 +85,9 @@ export function activate(context: vscode.ExtensionContext) {
               editBuilder.insert(editor.selection.active, commitMessage);
             });
           } else {
-            vscode.window.showWarningMessage(
-              "⚠️ No active editor to insert commit message."
-            );
+            vscode.window.showWarningMessage("⚠️ No active editor to insert commit message.");
           }
+
           // 3. Echo in terminal
           const terminal = vscode.window.createTerminal({
             name: "Generated Commit",
@@ -107,17 +96,21 @@ export function activate(context: vscode.ExtensionContext) {
           terminal.sendText(`echo "${commitMessage}"`);
           terminal.show();
 
-          vscode.window.showInformationMessage(
-            `✅ Commit message ready: copied, inserted, and echoed.`
-          );
+          // 4. Set in Source Control input box
+          const gitExtension = vscode.extensions.getExtension("vscode.git")?.exports;
+          const api = gitExtension?.getAPI(1);
+          if (api && api.repositories.length > 0) {
+            api.repositories[0].inputBox.value = commitMessage;
+          }
+
+          vscode.window.showInformationMessage(`✅ Commit message ready: copied, inserted, echoed, and populated.`);
         }
       } catch (e) {
-        vscode.window.showErrorMessage(
-          `💥 Error: could not generate a message.`
-        );
+        vscode.window.showErrorMessage(`💥 Error: could not generate a message.`);
       }
     }
   );
+
   context.subscriptions.push(disposable);
 }
 

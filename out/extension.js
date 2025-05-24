@@ -79,7 +79,6 @@ function activate(context) {
             if (!res.ok) {
                 console.error("Error:", res.statusText);
                 vscode.window.showErrorMessage(`💥 Error: ${res.status || "Unknown error"}`);
-                // create a log.txt file in the workspace root with the error message
                 const logFilePath = `${cwd}/log.txt`;
                 const logFileUri = vscode.Uri.file(logFilePath);
                 const logFileContent = `Error: ${res.statusText || "Unknown error"}`;
@@ -89,7 +88,7 @@ function activate(context) {
             }
             const raw = await res.json();
             console.log("Raw response:", raw);
-            const inner = JSON.parse(raw.response); // unwrap "response" string
+            const inner = JSON.parse(raw.response);
             console.log("Parsed response:", inner);
             const parsedData = CommitResponseSchema.safeParse(inner);
             vscode.window.showInformationMessage(`JSON Response: ${JSON.stringify(inner, null, 2)}`);
@@ -118,7 +117,13 @@ function activate(context) {
                 });
                 terminal.sendText(`echo "${commitMessage}"`);
                 terminal.show();
-                vscode.window.showInformationMessage(`✅ Commit message ready: copied, inserted, and echoed.`);
+                // 4. Set in Source Control input box
+                const gitExtension = vscode.extensions.getExtension("vscode.git")?.exports;
+                const api = gitExtension?.getAPI(1);
+                if (api && api.repositories.length > 0) {
+                    api.repositories[0].inputBox.value = commitMessage;
+                }
+                vscode.window.showInformationMessage(`✅ Commit message ready: copied, inserted, echoed, and populated.`);
             }
         }
         catch (e) {
