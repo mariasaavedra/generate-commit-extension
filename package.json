@@ -1,0 +1,42 @@
+{
+  "name": "generate-commit-extension",
+  "displayName": "Generate Commit Message",
+  "description": "Generate commit messages using LLaMA via Ollama",
+  "version": "0.0.1",
+  "author": {
+    "name": "Maria Saavedra"
+  },
+  "repository": {},
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.12",
+    "@types/vscode": "^1.70.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "extension.generateCommitMessage",
+        "title": "Create Commit Message"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onCommand:extension.generateCommitMessage"
+  ]
+}
