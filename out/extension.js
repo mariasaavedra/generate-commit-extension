@@ -64,13 +64,16 @@ function activate(context) {
                 return;
             }
             const model = "codellama:7b-instruct";
-            const prompt = ` Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`;
+            const prompt = ` Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`.trim();
             const _log = () => {
                 vscode.window.showInformationMessage("📦 Running Generate Commit Message");
-                vscode.window.showInformationMessage(`📁 Workspace path: ${cwd}`);
-                vscode.window.showInformationMessage(`🧾 Diff (truncated):\n${diff.substring(0, 200)}`);
-                vscode.window.showInformationMessage(`📤 Prompt (truncated):\n${prompt.substring(0, 200)}`);
-                return;
+                // vscode.window.showInformationMessage(`📁 Workspace path: ${cwd}`);
+                // vscode.window.showInformationMessage(
+                //   `🧾 Diff (truncated):\n${diff.substring(0, 200)}`
+                // );
+                // vscode.window.showInformationMessage(
+                //   `📤 Prompt (truncated):\n${prompt.substring(0, 200)}`
+                // );
             };
             const res = await (0, node_fetch_1.default)("http://localhost:11434/api/generate", {
                 method: "POST",
@@ -84,10 +87,22 @@ function activate(context) {
             });
             _log();
             const raw = await res.json();
+            if (!res.ok) {
+                console.error("Error:", raw);
+                vscode.window.showErrorMessage(`💥 Error: ${raw.error || "Unknown error"}`);
+                // create a log.txt file in the workspace root with the error message
+                const logFilePath = `${cwd}/log.txt`;
+                const logFileUri = vscode.Uri.file(logFilePath);
+                const logFileContent = `Error: ${raw.error || "Unknown error"}`;
+                await vscode.workspace.fs.writeFile(logFileUri, Buffer.from(logFileContent, "utf-8"));
+                vscode.window.showInformationMessage(`⚠️ Error logged to ${logFilePath}`);
+                throw new Error(`Error: ${raw.error || "Unknown error"}`);
+            }
+            console.log("Raw response:", raw);
             const inner = JSON.parse(raw.response); // unwrap "response" string
+            console.log("Parsed response:", inner);
             const parsedData = CommitResponseSchema.safeParse(inner);
-            console.log(JSON.stringify(raw, null, 2));
-            vscode.window.showInformationMessage(`📦 Response: ${JSON.stringify(raw, null, 2)}`);
+            vscode.window.showInformationMessage(`JSON Response: ${JSON.stringify(inner, null, 2)}`);
             if (parsedData.success) {
                 const commitMessage = parsedData.data.commit_message;
                 console.log("Commit message:", commitMessage);
@@ -107,7 +122,6 @@ function activate(context) {
                 const terminal = vscode.window.createTerminal({
                     name: "Generated Commit",
                     cwd,
-                    message: commitMessage,
                 });
                 terminal.sendText(`echo "${commitMessage}"`);
                 terminal.show();

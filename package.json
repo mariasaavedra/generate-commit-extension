@@ -1,7 +1,7 @@
 {
   "name": "generate-commit-extension",
-  "displayName": "Generate Commit Message",
-  "description": "Generate commit messages using LLaMA via Ollama",
+  "displayName": "Create Commit Message",
+  "description": "Create commit messages using LLaMA via Ollama",
   "version": "0.0.1",
   "license": "MIT",
   "publisher": "mariasaavedra",
@@ -35,7 +35,7 @@
     "commands": [
       {
         "command": "extension.generateCommitMessage",
-        "title": "Create Commit Message"
+        "title": "Add Commit Message"
       }
     ]
   },
