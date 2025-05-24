@@ -64,46 +64,39 @@ function activate(context) {
                 return;
             }
             const model = "codellama:7b-instruct";
-            const prompt = ` Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`.trim();
-            const _log = () => {
-                vscode.window.showInformationMessage("📦 Running Generate Commit Message");
-                // vscode.window.showInformationMessage(`📁 Workspace path: ${cwd}`);
-                // vscode.window.showInformationMessage(
-                //   `🧾 Diff (truncated):\n${diff.substring(0, 200)}`
-                // );
-                // vscode.window.showInformationMessage(
-                //   `📤 Prompt (truncated):\n${prompt.substring(0, 200)}`
-                // );
-            };
+            const prompt = `Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`.trim();
+            vscode.window.showInformationMessage("📦 Running Generate Commit Message");
             const res = await (0, node_fetch_1.default)("http://localhost:11434/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    model,
-                    prompt,
+                    model: model,
+                    prompt: prompt,
                     temperature: 0,
                     stream: false,
                 }),
             });
-            _log();
-            const raw = await res.json();
             if (!res.ok) {
-                console.error("Error:", raw);
-                vscode.window.showErrorMessage(`💥 Error: ${raw.error || "Unknown error"}`);
+                console.error("Error:", res.statusText);
+                vscode.window.showErrorMessage(`💥 Error: ${res.status || "Unknown error"}`);
                 // create a log.txt file in the workspace root with the error message
                 const logFilePath = `${cwd}/log.txt`;
                 const logFileUri = vscode.Uri.file(logFilePath);
-                const logFileContent = `Error: ${raw.error || "Unknown error"}`;
+                const logFileContent = `Error: ${res.statusText || "Unknown error"}`;
                 await vscode.workspace.fs.writeFile(logFileUri, Buffer.from(logFileContent, "utf-8"));
                 vscode.window.showInformationMessage(`⚠️ Error logged to ${logFilePath}`);
-                throw new Error(`Error: ${raw.error || "Unknown error"}`);
+                throw new Error(`Error: ${res.statusText || "Unknown error"}`);
             }
+            const raw = await res.json();
             console.log("Raw response:", raw);
             const inner = JSON.parse(raw.response); // unwrap "response" string
             console.log("Parsed response:", inner);
             const parsedData = CommitResponseSchema.safeParse(inner);
             vscode.window.showInformationMessage(`JSON Response: ${JSON.stringify(inner, null, 2)}`);
             if (parsedData.success) {
+                vscode.window.showInformationMessage(`✅ Commit message generated successfully!`, {
+                    detail: `Commit message: ${parsedData.data.commit_message}`,
+                });
                 const commitMessage = parsedData.data.commit_message;
                 console.log("Commit message:", commitMessage);
                 // 1. Copy to clipboard
