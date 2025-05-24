@@ -42,7 +42,12 @@ const vscode = __importStar(require("vscode"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const child_process_1 = require("child_process");
 const util_1 = require("util");
+const zod_1 = require("zod");
 const execAsync = (0, util_1.promisify)(child_process_1.exec);
+// Zod schema for validating model output
+const CommitResponseSchema = zod_1.z.object({
+    commit_message: zod_1.z.string(),
+});
 function activate(context) {
     const disposable = vscode.commands.registerCommand("extension.generateCommitMessage", async () => {
         try {
@@ -54,72 +59,63 @@ function activate(context) {
             const cwd = workspaceFolders[0].uri.fsPath;
             const { stdout: diff } = await execAsync("git diff --cached", { cwd });
             if (!diff.trim()) {
+                console.log("No staged changes found.");
                 vscode.window.showWarningMessage("No staged changes found.");
                 return;
             }
             const model = "codellama:7b-instruct";
-            const system = `You are a helpful assistant that generates commit messages based on the provided git diff. Your task is to create a concise and clear commit message that follows the Conventional Commits format.`;
-            const prompt = ` Given a git diff, output a single-line commit message that follows the Conventional Commits specification:
-Format: <type>[optional scope]: <description>
-Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build  
-Use ! after the type for breaking changes.  
-Do not include explanations, examples, formatting, headers, or any text other than the commit message itself.  
-Your commit message must be a single line.  OUTPUT AS JSON|  Diff: ${diff} `;
-            vscode.window.showInformationMessage("📦 Running Generate Commit Message");
-            vscode.window.showInformationMessage("📁 Workspace path:", cwd);
-            vscode.window.showInformationMessage("🧾 Diff:\n", diff.substring(0, 200));
-            vscode.window.showInformationMessage("📤 Prompt:\n", prompt);
+            const prompt = ` Given a git diff, output a single-line commit message that follows the Conventional Commits specification: Use one of the following types: feat, fix, chore, refactor, docs, style, test, ci, perf, build   Use ! after the type for breaking changes.   Do not include explanations, examples, formatting, headers, or any text other than the commit message itself. Your response must be a JSON object.e.g  { "commit_message": "chore: updated package.json" } Return only the JSON. |  Diff: ${diff}`;
+            const _log = () => {
+                vscode.window.showInformationMessage("📦 Running Generate Commit Message");
+                vscode.window.showInformationMessage(`📁 Workspace path: ${cwd}`);
+                vscode.window.showInformationMessage(`🧾 Diff (truncated):\n${diff.substring(0, 200)}`);
+                vscode.window.showInformationMessage(`📤 Prompt (truncated):\n${prompt.substring(0, 200)}`);
+                return;
+            };
             const res = await (0, node_fetch_1.default)("http://localhost:11434/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     model,
+                    prompt,
+                    temperature: 0,
                     stream: false,
-                    format: {
-                        type: "object",
-                        properties: {
-                            type: "string",
-                            description: "A single-line Conventional Commit message.",
-                            example: "fix: corrected minor typos in code",
-                        },
-                        required: ["commit_message"],
-                    },
                 }),
             });
-            if (!res.ok) {
-                throw new Error(`Ollama API error: ${res.status} ${res.statusText}`);
-            }
-            const data = await res.json();
-            let message = "";
-            if (data.response) {
-                try {
-                    // Try parsing as JSON first (structured output)
-                    const parsed = JSON.parse(data.response);
-                    message = parsed.commit_message;
+            _log();
+            const raw = await res.json();
+            const inner = JSON.parse(raw.response); // unwrap "response" string
+            const parsedData = CommitResponseSchema.safeParse(inner);
+            console.log(JSON.stringify(raw, null, 2));
+            vscode.window.showInformationMessage(`📦 Response: ${JSON.stringify(raw, null, 2)}`);
+            if (parsedData.success) {
+                const commitMessage = parsedData.data.commit_message;
+                console.log("Commit message:", commitMessage);
+                // 1. Copy to clipboard
+                await vscode.env.clipboard.writeText(commitMessage);
+                // 2. Insert into active editor
+                const editor = vscode.window.activeTextEditor;
+                if (editor) {
+                    await editor.edit((editBuilder) => {
+                        editBuilder.insert(editor.selection.active, commitMessage);
+                    });
                 }
-                catch {
-                    // Fallback - maybe it returned plain text
-                    message = data.response.trim();
+                else {
+                    vscode.window.showWarningMessage("⚠️ No active editor to insert commit message.");
                 }
-            }
-            vscode.window.showInformationMessage("Response:", data);
-            vscode.window.showInformationMessage("Generated message:", message);
-            if (message) {
-                await vscode.env.clipboard.writeText(message);
-                vscode.window.showInformationMessage(`Commit message copied: ${message}`);
-                const _t = vscode.window.createTerminal({
-                    name: "Commit Message",
+                // 3. Echo in terminal
+                const terminal = vscode.window.createTerminal({
+                    name: "Generated Commit",
+                    cwd,
+                    message: commitMessage,
                 });
-                _t.sendText(message);
-                _t.sendText(JSON.stringify({ data: data.response }));
-                _t.show();
-            }
-            else {
-                vscode.window.showErrorMessage("No message generated.");
+                terminal.sendText(`echo "${commitMessage}"`);
+                terminal.show();
+                vscode.window.showInformationMessage(`✅ Commit message ready: copied, inserted, and echoed.`);
             }
         }
-        catch (err) {
-            vscode.window.showErrorMessage(`Error: ${err.message}`);
+        catch (e) {
+            vscode.window.showErrorMessage(`💥 Error: could not generate a message.`);
         }
     });
     context.subscriptions.push(disposable);
